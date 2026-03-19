@@ -1,0 +1,614 @@
+// ============================================================
+// LearnBeat AI - Universal Question Solver v6.0
+// Paste into browser console (F12 -> Console)
+// Right Shift to toggle | Answers ANY question type
+// ============================================================
+
+(function () {
+  'use strict';
+
+  if (window.__learnbeatAI) {
+    window.__learnbeatAI.toggle();
+    return;
+  }
+
+  // --- CONFIG ---
+  var CONFIG = {
+    version: '6.0',
+    hotkey: 'ShiftRight',
+    autoAnswer: true,
+    autoAnswerDelay: 1000,
+  };
+
+  // --- STATE ---
+  var state = {
+    visible: true,
+    processing: false,
+    lastQuestion: '',
+    lastAnswer: '',
+    selectedElement: null,
+    clickMode: false,
+    autoTimer: null,
+  };
+
+  // --- METRIC PREFIXES ---
+  var metricPrefixes = {
+    'micro': { symbol: 'μ', factor: 0.000001, dutch: 'miljoenste' },
+    'milli': { symbol: 'm', factor: 0.001, dutch: 'duizendste' },
+    'centi': { symbol: 'c', factor: 0.01, dutch: 'honderdste' },
+    'deci': { symbol: 'd', factor: 0.1, dutch: 'tiende' },
+    'deca': { symbol: 'da', factor: 10, dutch: 'tien' },
+    'hecto': { symbol: 'h', factor: 100, dutch: 'honderd' },
+    'kilo': { symbol: 'k', factor: 1000, dutch: 'duizend' },
+    'mega': { symbol: 'M', factor: 1000000, dutch: 'miljoen' },
+    'giga': { symbol: 'G', factor: 1000000000, dutch: 'miljard' },
+  };
+
+  // --- FRENCH NUMBERS ---
+  var frenchNumbers = {
+    'zero': 0, 'un': 1, 'deux': 2, 'trois': 3, 'quatre': 4,
+    'cinq': 5, 'six': 6, 'sept': 7, 'huit': 8, 'neuf': 9, 'dix': 10,
+    'onze': 11, 'douze': 12, 'treize': 13, 'quatorze': 14, 'quinze': 15,
+    'seize': 16, 'dix-sept': 17, 'dix-huit': 18, 'dix-neuf': 19,
+    'vingt': 20, 'trente': 30, 'quarante': 40, 'cinquante': 50,
+    'soixante': 60, 'soixante-dix': 70, 'quatre-vingts': 80,
+    'quatre-vingt': 80, 'quatre-vingt-dix': 90,
+    'cent': 100, 'mille': 1000
+  };
+
+  // --- CSS ---
+  var css = '#lb-root{position:fixed;top:20px;right:20px;width:420px;background:linear-gradient(145deg,rgba(15,15,25,0.98),rgba(10,10,18,0.98));border:1px solid rgba(108,99,255,0.5);border-radius:18px;box-shadow:0 15px 60px rgba(0,0,0,0.85);backdrop-filter:blur(30px);z-index:2147483647;font-family:Segoe UI,sans-serif;color:#E8E8FF;overflow:hidden}#lb-root.hidden{opacity:0;transform:translateY(-15px) scale(0.95);pointer-events:none}#lb-header{display:flex;align-items:center;gap:12px;padding:14px 16px;background:linear-gradient(135deg,rgba(108,99,255,0.2),rgba(139,92,246,0.1));border-bottom:1px solid rgba(108,99,255,0.25);cursor:move}#lb-logo{font-size:22px}#lb-title{font-size:14px;font-weight:700;color:#fff;margin:0}#lb-sub{font-size:10px;color:#A78BFA;margin:2px 0 0 0}#lb-close{margin-left:auto;background:rgba(255,255,255,0.05);border:none;color:#888;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:14px}#lb-close:hover{background:rgba(248,113,113,0.2);color:#F87171}#lb-status{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(0,0,0,0.3);font-size:11px;color:#999}#lb-dot{width:9px;height:9px;border-radius:50%;background:#666}#lb-dot.ready{background:#34D399;box-shadow:0 0 8px #34D399}#lb-dot.working{background:#FBBF24;box-shadow:0 0 8px #FBBF24;animation:pulse 0.8s infinite}#lb-dot.error{background:#F87171;box-shadow:0 0 8px #F87171}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}#lb-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;max-height:50vh;overflow-y:auto}#lb-body::-webkit-scrollbar{width:4px}#lb-body::-webkit-scrollbar-thumb{background:rgba(108,99,255,0.4);border-radius:3px}.lb-section{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px}.lb-label{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#888;margin-bottom:6px}.lb-badge{font-size:8px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px}.lb-badge-auto{background:rgba(52,211,153,0.2);color:#34D399}.lb-badge-sel{background:rgba(251,191,36,0.2);color:#FBBF24}#lb-q{font-size:13px;line-height:1.55;color:#D0D0FF;word-break:break-word}#lb-q.empty{color:#555;font-style:italic;font-size:11px}#lb-abox{background:linear-gradient(135deg,rgba(108,99,255,0.12),rgba(139,92,246,0.08));border:1px solid rgba(108,99,255,0.35)}#lb-a{font-size:15px;font-weight:700;color:#fff;padding:8px 12px;background:linear-gradient(135deg,rgba(108,99,255,0.25),rgba(139,92,246,0.15));border-left:3px solid #6C63FF;border-radius:0 6px 6px 0;margin-bottom:8px;line-height:1.5}#lb-a.empty{font-size:11px;font-weight:400;color:#666;font-style:italic;background:none;border:none;padding:0}#lb-exp{font-size:11px;color:#A8A8C8;line-height:1.5}.lb-shimmer{background:linear-gradient(90deg,rgba(255,255,255,0.02) 25%,rgba(255,255,255,0.06) 50%,rgba(255,255,255,0.02) 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;height:14px;border-radius:4px;margin:5px 0}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}#lb-input{width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#E8E8FF;font-size:12px;font-family:inherit;resize:none;outline:none}#lb-input:focus{border-color:#6C63FF}#lb-input::placeholder{color:#555}#lb-btns{display:flex;gap:8px}.lb-btn{flex:1;padding:10px 12px;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}.lb-btn:hover{transform:translateY(-1px)}.lb-btn:disabled{opacity:0.5;cursor:not-allowed}#lb-ask{background:linear-gradient(135deg,#6C63FF,#8B5CF6);color:#fff}#lb-sel{background:linear-gradient(135deg,#3B82F6,#60A5FA);color:#fff}#lb-sel.active{background:linear-gradient(135deg,#F59E0B,#FBBF24)}#lb-clr{background:rgba(255,255,255,0.08);color:#999}#lb-auto{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:11px;color:#888}#lb-auto input{width:14px;height:14px;accent-color:#6C63FF}#lb-footer{padding:8px 14px;font-size:9px;color:#555;border-top:1px solid rgba(255,255,255,0.05);background:rgba(0,0,0,0.25);display:flex;justify-content:space-between}.lb-hl{outline:3px solid #6C63FF!important;outline-offset:3px!important;background:rgba(108,99,255,0.1)!important;border-radius:6px!important}.lb-hover{outline:2px dashed #60A5FA!important;outline-offset:2px!important;background:rgba(96,165,250,0.08)!important;cursor:crosshair!important}#lb-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:rgba(15,15,25,0.95);border:1px solid rgba(108,99,255,0.4);padding:12px 18px;border-radius:10px;color:#fff;font-size:12px;z-index:2147483647;transition:transform 0.3s;box-shadow:0 8px 25px rgba(0,0,0,0.5)}#lb-toast.show{transform:translateX(-50%) translateY(0)}#lb-abox.success{animation:spulse 0.5s}@keyframes spulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.4)}70%{box-shadow:0 0 0 12px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}';
+
+  var style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+
+  // --- BUILD UI ---
+  var root = document.createElement('div');
+  root.id = 'lb-root';
+  root.innerHTML = '<div id="lb-header"><span id="lb-logo">🤖</span><div><div id="lb-title">LearnBeat AI Pro</div><div id="lb-sub">Right Shift • v' + CONFIG.version + '</div></div><button id="lb-close">✕</button></div><div id="lb-status"><div id="lb-dot" class="ready"></div><span id="lb-st">Klaar • Scannen...</span></div><div id="lb-body"><div class="lb-section"><div class="lb-label">📍 Vraag<span class="lb-badge lb-badge-auto" id="lb-badge">AUTO</span></div><div id="lb-q" class="empty">Geen vraag gevonden...</div></div><div class="lb-section" id="lb-abox"><div class="lb-label">💡 Antwoord</div><div id="lb-a" class="empty">Wachten...</div><div id="lb-exp"></div></div><textarea id="lb-input" rows="2" placeholder="Typ hier je vraag..."></textarea><div id="lb-btns"><button class="lb-btn" id="lb-ask">🔍 Vraag AI</button><button class="lb-btn" id="lb-sel">👆 Selecteer</button><button class="lb-btn" id="lb-clr">🗑 Wissen</button></div><div id="lb-auto"><label><input type="checkbox" id="lb-chk" checked><span>🔄 Auto-antwoord</span></label></div></div><div id="lb-footer"><span>🇳🇱 NL Modus</span><span>v' + CONFIG.version + '</span></div>';
+  document.body.appendChild(root);
+
+  var toast = document.createElement('div');
+  toast.id = 'lb-toast';
+  document.body.appendChild(toast);
+
+  // --- ELEMENTS ---
+  var el = {
+    root: root,
+    dot: document.getElementById('lb-dot'),
+    st: document.getElementById('lb-st'),
+    q: document.getElementById('lb-q'),
+    badge: document.getElementById('lb-badge'),
+    a: document.getElementById('lb-a'),
+    exp: document.getElementById('lb-exp'),
+    abox: document.getElementById('lb-abox'),
+    input: document.getElementById('lb-input'),
+    ask: document.getElementById('lb-ask'),
+    sel: document.getElementById('lb-sel'),
+    clr: document.getElementById('lb-clr'),
+    close: document.getElementById('lb-close'),
+    header: document.getElementById('lb-header'),
+    chk: document.getElementById('lb-chk')
+  };
+
+  // --- HELPERS ---
+  function showToast(msg, t) {
+    t = t || 2500;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, t);
+  }
+
+  function setStatus(text, type) {
+    el.st.textContent = text;
+    el.dot.className = type || '';
+  }
+
+  function showLoading() {
+    el.a.className = '';
+    el.a.innerHTML = '<div class="lb-shimmer" style="width:80%"></div><div class="lb-shimmer" style="width:60%"></div>';
+    el.exp.textContent = '';
+    setStatus('Denken...', 'working');
+  }
+
+  function showAnswer(ans, exp) {
+    el.a.className = '';
+    el.a.textContent = ans || '(geen antwoord)';
+    el.exp.textContent = exp || '';
+    setStatus('Klaar ✓', 'ready');
+    el.abox.classList.add('success');
+    setTimeout(function() { el.abox.classList.remove('success'); }, 500);
+    showToast('✅ Antwoord!');
+  }
+
+  function showError(msg) {
+    el.a.className = '';
+    el.a.style.cssText = 'color:#F87171;font-size:12px;';
+    el.a.textContent = '⚠️ ' + msg;
+    setStatus('Fout', 'error');
+  }
+
+  function highlight(elem) {
+    var all = document.querySelectorAll('.lb-hl');
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.remove('lb-hl');
+    }
+    if (elem) {
+      elem.classList.add('lb-hl');
+      state.selectedElement = elem;
+    }
+  }
+
+  // --- QUESTION DETECTOR ---
+  function findQuestion() {
+    var allText = [];
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, null, false);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (root.contains(node)) continue;
+      var tag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (tag === 'script' || tag === 'style' || tag === 'noscript' || tag === 'iframe' || tag === 'svg') continue;
+     
+      var text = (node.innerText || node.textContent || '').trim();
+      var rect = node.getBoundingClientRect();
+     
+      if (text.length > 5 && rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight) {
+        allText.push({ text: text, element: node, rect: rect });
+      }
+    }
+   
+    var best = null;
+    var bestScore = 0;
+   
+    for (var i = 0; i < allText.length; i++) {
+      var item = allText[i];
+      var text = item.text;
+      var score = 0;
+     
+      // Question marks
+      if (/[？?]/.test(text)) score += 50;
+     
+      // Dutch question words
+      if (/\b(wat|wie|welk|welke|wanneer|waar|waarom|hoe|bereken|uitleg|beschrijf|geef|noem|vergelijk|leg uit|vul|schrijf|bepaal|vind)\b/i.test(text)) score += 40;
+     
+      // Fill-in-the-blank
+      if (/_{2,}|\[.*?\]/.test(text)) score += 45;
+     
+      // Educational patterns
+      if (/afbeelding|figuur|tabel|grafiek|opgave|opdracht|oefening/i.test(text)) score += 30;
+     
+      // Measurement instruments
+      if (/(amperemeter|voltmeter|weegschaal|maatbeker|liniaal|thermometer)/i.test(text)) score += 35;
+     
+      // Prefix questions
+      if (/(voorvoegsel|afkorting|betekenis|eenheid|symbool)/i.test(text)) score += 40;
+     
+      // French numbers
+      if (/\b(un|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|mille|cent|vingt|trente)\b/i.test(text)) score += 30;
+     
+      // Nederlands XXXX
+      if (/nederlands\s+\d+/i.test(text)) score += 50;
+     
+      // Numbered
+      if (/\d+[\)\.]\s/.test(text)) score += 20;
+     
+      // Math
+      if (/[=+\-*/]/.test(text)) score += 15;
+     
+      // Section labels
+      if (/^[A-F][\s\-\:]/m.test(text)) score += 15;
+     
+      // Length check
+      if (text.length > 20 && text.length < 2000) score += 10;
+     
+      // Position
+      if (item.rect.top > 0 && item.rect.top < window.innerHeight * 0.6) score += 15;
+     
+      if (score > bestScore) {
+        bestScore = score;
+        best = { text: text, element: item.element, score: score };
+      }
+    }
+   
+    return best;
+  }
+
+  // --- SMART ANSWER ENGINE ---
+  function getSmartAnswer(question) {
+    var q = question.toLowerCase();
+   
+    // PREFIX QUESTIONS
+    if (/voorvoegsel|afkorting|betekenis/i.test(q)) {
+      var instrument = '';
+      var prefix = '';
+     
+      if (/amperemeter|amper/i.test(q)) {
+        instrument = 'amperemeter';
+        prefix = 'milli';
+        var pData = metricPrefixes[prefix];
+        return {
+          answer: 'Voorvoegsel: ' + prefix + ', Afkorting: ' + pData.symbol + ', Betekenis: ' + pData.dutch,
+          explanation: 'Een milliamperemeter meet stroom in duizendste Ampere. milli = ' + pData.dutch
+        };
+      }
+     
+      if (/weegschaal|gram/i.test(q)) {
+        instrument = 'weegschaal';
+        prefix = 'kilo';
+        var pData = metricPrefixes[prefix];
+        return {
+          answer: 'Voorvoegsel: ' + prefix + ', Afkorting: ' + pData.symbol + ', Betekenis: ' + pData.dutch,
+          explanation: 'Een kilogram weegschaal meet gewicht. kilo = ' + pData.dutch
+        };
+      }
+     
+      if (/maatbeker|liter/i.test(q)) {
+        instrument = 'maatbeker';
+        prefix = 'milli';
+        var pData = metricPrefixes[prefix];
+        return {
+          answer: 'Voorvoegsel: ' + prefix + ', Afkorting: ' + pData.symbol + ', Betekenis: ' + pData.dutch,
+          explanation: 'Een milliliter maatbeker meet inhoud. milli = ' + pData.dutch
+        };
+      }
+     
+      if (/liniaal|meter/i.test(q)) {
+        instrument = 'liniaal';
+        prefix = 'centi';
+        var pData = metricPrefixes[prefix];
+        return {
+          answer: 'Voorvoegsel: ' + prefix + ', Afkorting: ' + pData.symbol + ', Betekenis: ' + pData.dutch,
+          explanation: 'Een centimeter liniaal meet lengte. centi = ' + pData.dutch
+        };
+      }
+    }
+   
+    // FRENCH NUMBERS
+    if (/nederlands\s+\d+/i.test(question)) {
+      var match = question.match(/nederlands\s+(\d+)/i);
+      if (match) {
+        var num = parseInt(match[1]);
+        var french = numberToFrench(num);
+        return { answer: french, explanation: 'Het getal ' + num + ' in het Frans is "' + french + '".' };
+      }
+    }
+   
+    // Check for French in question
+    var frenchKeys = Object.keys(frenchNumbers);
+    for (var i = 0; i < frenchKeys.length; i++) {
+      var french = frenchKeys[i];
+      if (q.indexOf(french) !== -1 && french.length > 2) {
+        return { answer: french + ' = ' + frenchNumbers[french], explanation: 'Het Franse "' + french + '" betekent ' + frenchNumbers[french] + '.' };
+      }
+    }
+   
+    // MATH
+    if (/[=+\-*/]/.test(question)) {
+      try {
+        var nums = question.match(/[\d.]+/g);
+        if (nums && nums.length >= 2) {
+          var expr = question.match(/[\d+\-*/.]+/);
+          if (expr) {
+            var result = eval(expr[0]);
+            return { answer: String(result), explanation: 'Berekening: ' + expr[0] + ' = ' + result };
+          }
+        }
+      } catch (e) {}
+    }
+   
+    return null;
+  }
+
+  // --- NUMBER TO FRENCH ---
+  function numberToFrench(num) {
+    if (num === 0) return 'zero';
+    if (num === 1000) return 'mille';
+    if (num === 100) return 'cent';
+    if (num === 80) return 'quatre-vingts';
+    if (num === 20) return 'vingt';
+   
+    var units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
+    var tens = ['', '', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante-dix', 'quatre-vingts', 'quatre-vingt-dix'];
+   
+    if (num < 20) return units[num];
+    if (num < 100) {
+      var t = Math.floor(num / 10);
+      var u = num % 10;
+      if (u === 0) return tens[t];
+      return tens[t] + '-' + units[u];
+    }
+    if (num < 1000) {
+      var h = Math.floor(num / 100);
+      var r = num % 100;
+      var hText = h === 1 ? 'cent' : units[h] + '-cents';
+      if (r === 0) return hText.replace('s', '');
+      return hText.replace('s', '') + '-' + numberToFrench(r);
+    }
+   
+    return String(num);
+  }
+
+  // --- AI ENGINE ---
+  function getAIAnswer(question) {
+    var prompt = 'Je bent een Nederlandse leraar. Beantwoord deze vraag kort in het NEDERLANDS.\n\nVraag: ' + question + '\n\nRegels:\n1. Antwoord in het NEDERLANDS\n2. Kort en duidelijk\n\nJSON: {"answer":"antwoord","explanation":"uitleg"}';
+
+    return new Promise(function(resolve) {
+      var url = 'https://text.pollinations.ai/' + encodeURIComponent(prompt) + '?model=openai&json=true&seed=' + Date.now();
+     
+      var timeout = setTimeout(function() {
+        resolve({ answer: 'AI timeout - probeer opnieuw', explanation: '' });
+      }, 15000);
+     
+      fetch(url).then(function(res) {
+        return res.text();
+      }).then(function(text) {
+        clearTimeout(timeout);
+        var match = text.match(/\{[\s\S]*?\}/);
+        if (match) {
+          try {
+            var parsed = JSON.parse(match[0]);
+            resolve({ answer: parsed.answer || text.slice(0, 150), explanation: parsed.explanation || '' });
+          } catch (e) {
+            resolve({ answer: text.slice(0, 150), explanation: '' });
+          }
+        } else {
+          resolve({ answer: text.slice(0, 150), explanation: '' });
+        }
+      }).catch(function(e) {
+        clearTimeout(timeout);
+        resolve({ answer: 'AI fout - probeer opnieuw', explanation: '' });
+      });
+    });
+  }
+
+  // --- MAIN PROCESS ---
+  async function processQuestion(manual) {
+    if (state.processing) return;
+    state.processing = true;
+    el.ask.disabled = true;
+
+    try {
+      var questionText = manual || null;
+      var source = 'manual';
+
+      if (!questionText) {
+        if (state.selectedElement) {
+          questionText = (state.selectedElement.innerText || state.selectedElement.textContent || '').trim();
+          source = 'selected';
+        } else {
+          var found = findQuestion();
+          if (found) {
+            questionText = found.text;
+            highlight(found.element);
+            source = 'auto';
+          }
+        }
+      }
+
+      if (!questionText) {
+        setStatus('Geen vraag', 'error');
+        showToast('❌ Geen vraag. Klik Selecteer of typ handmatig.');
+        state.processing = false;
+        el.ask.disabled = false;
+        return;
+      }
+
+      if (questionText === state.lastQuestion && !manual) {
+        state.processing = false;
+        el.ask.disabled = false;
+        return;
+      }
+      state.lastQuestion = questionText;
+
+      el.q.textContent = questionText.length > 300 ? questionText.slice(0, 300) + '...' : questionText;
+      el.q.classList.remove('empty');
+      el.badge.textContent = source.toUpperCase();
+      el.badge.className = 'lb-badge lb-badge-' + (source === 'auto' ? 'auto' : 'sel');
+
+      showLoading();
+
+      var result = getSmartAnswer(questionText);
+      if (!result) {
+        result = await getAIAnswer(questionText);
+      }
+
+      state.lastAnswer = result.answer;
+      showAnswer(result.answer, result.explanation);
+
+    } catch (e) {
+      showError('Fout: ' + e.message);
+    }
+
+    state.processing = false;
+    el.ask.disabled = false;
+  }
+
+  // --- CLICK SELECT ---
+  function enableClickMode() {
+    state.clickMode = true;
+    el.sel.classList.add('active');
+    el.sel.innerHTML = '🎯 Klik...';
+    setStatus('Klik op vraag', 'working');
+    document.body.style.cursor = 'crosshair';
+    document.addEventListener('mouseover', onHover);
+    document.addEventListener('mouseout', onHoverOut);
+    document.addEventListener('click', onClickSelect, true);
+  }
+
+  function disableClickMode() {
+    state.clickMode = false;
+    el.sel.classList.remove('active');
+    el.sel.innerHTML = '👆 Selecteer';
+    setStatus('Klaar', 'ready');
+    document.body.style.cursor = '';
+    var all = document.querySelectorAll('.lb-hover');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('lb-hover');
+    document.removeEventListener('mouseover', onHover);
+    document.removeEventListener('mouseout', onHoverOut);
+    document.removeEventListener('click', onClickSelect, true);
+  }
+
+  function onHover(e) {
+    if (!state.clickMode || root.contains(e.target)) return;
+    e.target.classList.add('lb-hover');
+  }
+
+  function onHoverOut(e) {
+    e.target.classList.remove('lb-hover');
+  }
+
+  function onClickSelect(e) {
+    if (!state.clickMode || root.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+   
+    var text = (e.target.innerText || e.target.textContent || '').trim();
+    if (text.length < 3) {
+      showToast('Geen tekst, probeer ander element.');
+      return;
+    }
+   
+    disableClickMode();
+    highlight(e.target);
+    el.q.textContent = text;
+    el.q.classList.remove('empty');
+    el.badge.textContent = 'SELECTED';
+    el.badge.className = 'lb-badge lb-badge-sel';
+    showToast('✅ Geselecteerd!');
+    setTimeout(function() { processQuestion(text); }, 200);
+  }
+
+  // --- AUTO SCAN ---
+  function startAutoScan() {
+    stopAutoScan();
+    if (CONFIG.autoAnswer) {
+      state.autoTimer = setInterval(function() {
+        if (state.visible && !state.processing && !state.clickMode) processQuestion();
+      }, CONFIG.autoAnswerDelay);
+    }
+  }
+
+  function stopAutoScan() {
+    if (state.autoTimer) {
+      clearInterval(state.autoTimer);
+      state.autoTimer = null;
+    }
+  }
+
+  // --- TOGGLE ---
+  function toggle() {
+    state.visible = !state.visible;
+    el.root.classList.toggle('hidden', !state.visible);
+    if (state.visible) {
+      startAutoScan();
+      setTimeout(function() { processQuestion(); }, 400);
+    } else {
+      stopAutoScan();
+      var all = document.querySelectorAll('.lb-hl');
+      for (var i = 0; i < all.length; i++) all[i].classList.remove('lb-hl');
+      disableClickMode();
+    }
+  }
+
+  // --- EVENTS ---
+  document.addEventListener('keyup', function(e) {
+    if (e.code === CONFIG.hotkey) toggle();
+  }, true);
+
+  el.close.addEventListener('click', toggle);
+
+  el.ask.addEventListener('click', function() {
+    var q = el.input.value.trim();
+    var all = document.querySelectorAll('.lb-hl');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('lb-hl');
+    state.selectedElement = null;
+    processQuestion(q || null);
+  });
+
+  el.sel.addEventListener('click', function() {
+    if (state.clickMode) disableClickMode();
+    else enableClickMode();
+  });
+
+  el.clr.addEventListener('click', function() {
+    el.input.value = '';
+    state.lastQuestion = '';
+    state.lastAnswer = '';
+    state.selectedElement = null;
+    el.q.textContent = 'Geen vraag gevonden...';
+    el.q.classList.add('empty');
+    el.a.className = 'empty';
+    el.a.style.cssText = '';
+    el.a.textContent = 'Wachten...';
+    el.exp.textContent = '';
+    el.badge.textContent = 'AUTO';
+    el.badge.className = 'lb-badge lb-badge-auto';
+    var all = document.querySelectorAll('.lb-hl');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('lb-hl');
+    disableClickMode();
+    setStatus('Gewis', 'ready');
+    showToast('🗑 Gewist');
+  });
+
+  el.input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var q = el.input.value.trim();
+      if (q) {
+        var all = document.querySelectorAll('.lb-hl');
+        for (var i = 0; i < all.length; i++) all[i].classList.remove('lb-hl');
+        state.selectedElement = null;
+        processQuestion(q);
+      }
+    }
+  });
+
+  el.chk.addEventListener('change', function(e) {
+    CONFIG.autoAnswer = e.target.checked;
+    if (CONFIG.autoAnswer) {
+      startAutoScan();
+      showToast('✅ Auto aan');
+    } else {
+      stopAutoScan();
+      showToast('⏸ Auto uit');
+    }
+  });
+
+  // --- DRAG ---
+  (function() {
+    var dragging = false;
+    var ox = 0;
+    var oy = 0;
+    el.header.addEventListener('mousedown', function(e) {
+      if (e.target === el.close) return;
+      dragging = true;
+      var r = el.root.getBoundingClientRect();
+      ox = e.clientX - r.left;
+      oy = e.clientY - r.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      var x = Math.max(0, Math.min(e.clientX - ox, innerWidth - el.root.offsetWidth));
+      var y = Math.max(0, Math.min(e.clientY - oy, innerHeight - el.root.offsetHeight));
+      el.root.style.cssText = 'left:' + x + 'px;top:' + y + 'px;right:auto;';
+    });
+    document.addEventListener('mouseup', function() { dragging = false; });
+  })();
+
+  // --- EXPOSE API ---
+  window.__learnbeatAI = {
+    toggle: toggle,
+    process: processQuestion,
+    version: CONFIG.version
+  };
+
+  // --- INIT ---
+  startAutoScan();
+  setStatus('Klaar • Scannen...', 'ready');
+  setTimeout(function() { processQuestion(); }, 600);
+
+  console.log('%c🤖 LearnBeat AI Pro v' + CONFIG.version + ' loaded! Press Right Shift to toggle', 'background:linear-gradient(135deg,#6C63FF,#8B5CF6);color:#fff;padding:8px 16px;border-radius:10px;font-weight:bold');
+
+})();
